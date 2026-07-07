@@ -233,7 +233,7 @@ async def slash_list(interaction: discord.Interaction, участников: int
     await message.add_reaction('✅')
     
     # Добавляем скрытое упоминание @everyone
-    await interaction.channel.send(f"||@everyone||", delete_after=0.1)
+    await interaction.channel.send(f"||@everyone||")
     
     active_labels[interaction.channel_id] = {
         'message_id': message.id,
