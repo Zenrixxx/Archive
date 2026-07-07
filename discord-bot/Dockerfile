@@ -5,8 +5,8 @@ WORKDIR /app
 # Копируем файл бота
 COPY discord-bot/bot.py .
 
-# Устанавливаем зависимости напрямую
-RUN pip install discord.py pytz
+# Устанавливаем pip и базовые зависимости
+RUN pip install --upgrade pip
 
-# Запускаем бота
+# Запускаем бота (библиотеки установятся автоматически при запуске)
 CMD ["python", "bot.py"]
