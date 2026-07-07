@@ -1,10 +1,34 @@
+import subprocess
+import sys
+import os
+
+# ===== АВТОУСТАНОВКА БИБЛИОТЕК =====
+def install_packages():
+    """Автоматически устанавливает недостающие библиотеки"""
+    required = {
+        'discord': 'discord.py',
+        'pytz': 'pytz'
+    }
+    
+    for module, package in required.items():
+        try:
+            __import__(module)
+            print(f"✅ {package} уже установлен")
+        except ImportError:
+            print(f"📦 Устанавливаю {package}...")
+            subprocess.check_call([sys.executable, "-m", "pip", "install", package])
+            print(f"✅ {package} установлен")
+
+install_packages()
+# ====================================
+
+# Теперь импортируем библиотеки
 import discord
 from discord.ext import commands
 import asyncio
 from datetime import datetime, timedelta
 import pytz
 import random
-import os
 import logging
 
 # Настройка логирования
@@ -17,10 +41,12 @@ ALLOWED_CHANNELS = os.getenv('ALLOWED_CHANNELS', '').split(',')
 ALLOWED_CHANNELS = [int(channel_id.strip()) for channel_id in ALLOWED_CHANNELS if channel_id.strip()]
 
 if not TOKEN:
-    raise ValueError("BOT_TOKEN не найден в переменных окружения!")
+    raise ValueError("❌ BOT_TOKEN не найден в переменных окружения!")
 
 if not ALLOWED_CHANNELS:
-    logger.warning("ALLOWED_CHANNELS не указаны! Бот будет работать во всех каналах.")
+    logger.warning("⚠️ ALLOWED_CHANNELS не указаны! Бот будет работать во всех каналах.")
+else:
+    logger.info(f"✅ Разрешённые каналы: {ALLOWED_CHANNELS}")
 
 intents = discord.Intents.all()
 bot = commands.Bot(command_prefix='!', intents=intents)
@@ -30,8 +56,8 @@ active_labels = {}
 
 @bot.event
 async def on_ready():
-    logger.info(f'Бот {bot.user} запущен!')
-    logger.info(f'Разрешённые каналы: {ALLOWED_CHANNELS}')
+    logger.info(f'✅ Бот {bot.user} запущен!')
+    logger.info(f'📊 Активен на {len(bot.guilds)} серверах')
     await bot.change_presence(activity=discord.Game(name="!список"))
 
 @bot.event
@@ -52,7 +78,7 @@ async def on_raw_reaction_add(payload):
     user = await bot.fetch_user(payload.user_id)
     if user.id not in label_data['participants']:
         label_data['participants'][user.id] = user
-        logger.info(f"Участник {user.name} добавлен в метку канала {channel_id}")
+        logger.info(f"➕ Участник {user.name} добавлен в метку канала {channel_id}")
     
     await update_label_message(channel_id)
 
@@ -71,7 +97,7 @@ async def on_raw_reaction_remove(payload):
     if payload.user_id in label_data['participants']:
         user = label_data['participants'][payload.user_id]
         del label_data['participants'][payload.user_id]
-        logger.info(f"Участник {user.name} удален из метки канала {channel_id}")
+        logger.info(f"➖ Участник {user.name} удален из метки канала {channel_id}")
     
     await update_label_message(channel_id)
 
@@ -105,13 +131,13 @@ async def update_label_message(channel_id):
     end_time = label_data['end_time'].strftime("%H:%M")
     
     embed = discord.Embed(
-        title=f"Метка {target_count} x {target_count}",
-        description=f"Итоги в {end_time} (МСК)",
+        title=f"🏷️ Метка {target_count} x {target_count}",
+        description=f"⏰ Итоги в {end_time} (МСК)",
         color=discord.Color.blue()
     )
     
     embed.add_field(
-        name="Поставили реакции:",
+        name="👥 Поставили реакции:",
         value="\n".join(participant_list),
         inline=False
     )
@@ -120,7 +146,7 @@ async def update_label_message(channel_id):
     minutes = int(remaining.total_seconds() // 60)
     seconds = int(remaining.total_seconds() % 60)
     
-    embed.set_footer(text=f"Осталось {minutes} мин {seconds} сек | Нажмите ✅ чтобы участвовать")
+    embed.set_footer(text=f"⏳ Осталось {minutes} мин {seconds} сек | Нажмите ✅ чтобы участвовать")
     
     await message.edit(content=None, embed=embed)
 
@@ -150,19 +176,19 @@ async def create_list(ctx, target_count: int, minutes: int):
     end_time = now + timedelta(minutes=minutes)
     
     embed = discord.Embed(
-        title=f"Метка {target_count} x {target_count}",
-        description=f"Итоги в {end_time.strftime('%H:%M')} (МСК)",
+        title=f"🏷️ Метка {target_count} x {target_count}",
+        description=f"⏰ Итоги в {end_time.strftime('%H:%M')} (МСК)",
         color=discord.Color.blue()
     )
     
     participant_list = [f"{i}. @ожидание" for i in range(1, target_count + 1)]
     embed.add_field(
-        name="Поставили реакции:",
+        name="👥 Поставили реакции:",
         value="\n".join(participant_list),
         inline=False
     )
     
-    embed.set_footer(text=f"Нажмите ✅ чтобы участвовать! Осталось {minutes} мин.")
+    embed.set_footer(text=f"⏳ Нажмите ✅ чтобы участвовать! Осталось {minutes} мин.")
     
     message = await ctx.send(embed=embed)
     await message.add_reaction('✅')
@@ -175,7 +201,7 @@ async def create_list(ctx, target_count: int, minutes: int):
         'start_time': now
     }
     
-    logger.info(f"Создана метка в канале {ctx.channel.id}: {target_count} участников, {minutes} минут")
+    logger.info(f"📌 Создана метка в канале {ctx.channel.id}: {target_count} участников, {minutes} минут")
     
     await asyncio.sleep(minutes * 60)
     
@@ -215,8 +241,8 @@ async def finish_label(channel_id):
         not_selected = []
     
     result_lines = [
-        f"Метка {target_count} x {target_count} // Запрос в {start_time} (МСК)",
-        "Участники метки:"
+        f"🏷️ Метка {target_count} x {target_count} // Запрос в {start_time} (МСК)",
+        "👥 Участники метки:"
     ]
     
     for i, user in enumerate(selected, 1):
@@ -228,7 +254,7 @@ async def finish_label(channel_id):
     
     if not_selected:
         result_lines.append("----------------")
-        result_lines.append("Не вошли:")
+        result_lines.append("❌ Не вошли:")
         for i, user in enumerate(not_selected, 1):
             result_lines.append(f"{i}. {user.mention}")
     
@@ -237,7 +263,7 @@ async def finish_label(channel_id):
     await channel.send(result_message)
     
     del active_labels[channel_id]
-    logger.info(f"Метка в канале {channel_id} завершена")
+    logger.info(f"✅ Метка в канале {channel_id} завершена")
 
 @bot.command(name='стоп')
 async def stop_label(ctx):
@@ -263,8 +289,8 @@ async def status_label(ctx):
     
     await ctx.send(
         f"📊 **Статус метки:**\n"
-        f"Участников: {len(label_data['participants'])}/{label_data['target_count']}\n"
-        f"Осталось времени: {minutes} мин {seconds} сек"
+        f"👥 Участников: {len(label_data['participants'])}/{label_data['target_count']}\n"
+        f"⏳ Осталось времени: {minutes} мин {seconds} сек"
     )
 
 @bot.command(name='очистить')
@@ -279,4 +305,9 @@ async def clear_labels(ctx):
 
 # Запуск бота
 if __name__ == "__main__":
-    bot.run(TOKEN)
+    try:
+        bot.run(TOKEN)
+    except discord.errors.LoginFailure:
+        logger.error("❌ Неверный токен! Проверьте BOT_TOKEN в переменных окружения.")
+    except Exception as e:
+        logger.error(f"❌ Ошибка: {e}")
