@@ -73,7 +73,7 @@ async def on_ready():
 
 @bot.event
 async def on_raw_reaction_add(payload):
-    """Отслеживает добавление реакций"""
+    """Отслеживает добавление реакций - ПОКАЗЫВАЕТ ВСЕХ УЧАСТНИКОВ"""
     if payload.user_id == bot.user.id:
         return
     
@@ -113,7 +113,7 @@ async def on_raw_reaction_remove(payload):
     await update_label_message(channel_id)
 
 async def update_label_message(channel_id):
-    """Обновляет сообщение с меткой"""
+    """Обновляет сообщение с меткой - ПОКАЗЫВАЕТ ВСЕХ УЧАСТНИКОВ"""
     if channel_id not in active_labels:
         return
     
@@ -131,13 +131,22 @@ async def update_label_message(channel_id):
     participants = list(label_data['participants'].values())
     target_count = label_data['target_count']
     
-    # Формируем список участников
+    # ПОКАЗЫВАЕМ ВСЕХ УЧАСТНИКОВ (всех, кто поставил реакцию)
     participant_list = []
-    for i, user in enumerate(participants[:target_count], 1):
-        participant_list.append(f"{i}. {user.mention}")
     
-    while len(participant_list) < target_count:
-        participant_list.append(f"{len(participant_list) + 1}. @ожидание")
+    if participants:
+        # Показываем ВСЕХ участников, кто поставил реакцию
+        for i, user in enumerate(participants, 1):
+            participant_list.append(f"{i}. {user.mention}")
+        
+        # Если участников больше, чем нужно - показываем всех
+        if len(participants) > target_count:
+            # Добавляем предупреждение, но показываем всех
+            participant_list.append(f"⚠️ Всего {len(participants)} участников (нужно {target_count})")
+    else:
+        # Если нет участников - показываем ожидание
+        for i in range(1, target_count + 1):
+            participant_list.append(f"{i}. @ожидание")
     
     end_time = label_data['end_time'].strftime("%H:%M")
     
@@ -148,8 +157,8 @@ async def update_label_message(channel_id):
     )
     
     embed.add_field(
-        name="👥 Поставили реакции:",
-        value="\n".join(participant_list),
+        name=f"👥 Поставили реакции ({len(participants)} чел.):",
+        value="\n".join(participant_list) if participant_list else "⏳ Ожидание...",
         inline=False
     )
     
@@ -212,15 +221,17 @@ async def slash_list(interaction: discord.Interaction, участников: int
     now = datetime.now(moscow_tz)
     end_time = now + timedelta(minutes=минут)
     
+    # Начальное сообщение с ожиданием
+    participant_list = [f"{i}. @ожидание" for i in range(1, участников + 1)]
+    
     embed = discord.Embed(
-        title=f"🏷️ Метка {участников} x {участников}",
-        description=f"⏰ Итоги в {end_time.strftime('%H:%M')} (МСК)",
+        title=f"🛑 Метка {участников} x {участников}",
+        description=f"⏳ Итоги в {end_time.strftime('%H:%M')} (МСК)",
         color=discord.Color.blue()
     )
     
-    participant_list = [f"{i}. @ожидание" for i in range(1, участников + 1)]
     embed.add_field(
-        name="👥 Поставили реакции:",
+        name="👥 Поставили реакции (0 чел.):",
         value="\n".join(participant_list),
         inline=False
     )
@@ -233,7 +244,10 @@ async def slash_list(interaction: discord.Interaction, участников: int
     await message.add_reaction('✅')
     
     # Добавляем скрытое упоминание @everyone
-    await interaction.channel.send(f"||@everyone||")
+    try:
+        await interaction.channel.send("||@everyone||")
+    except Exception as e:
+        logger.error(f"❌ Ошибка при отправке @everyone: {e}")
     
     active_labels[interaction.channel_id] = {
         'message_id': message.id,
@@ -285,7 +299,7 @@ async def finish_label(channel_id):
     # Формируем итоговое сообщение в коробочке
     result_lines = [
         f"🛑 Метка {target_count} x {target_count} // Запрос в {start_time} (МСК)",
-        "👥 Участники метки:"
+        f"👥 Участники метки ({len(selected)}/{target_count}):"
     ]
     
     for i, user in enumerate(selected, 1):
@@ -297,7 +311,7 @@ async def finish_label(channel_id):
     
     if not_selected:
         result_lines.append("----------------")
-        result_lines.append("❌ Не вошли:")
+        result_lines.append(f"❌ Не вошли ({len(not_selected)} чел.):")
         for i, user in enumerate(not_selected, 1):
             result_lines.append(f"{i}. {user.mention}")
     
