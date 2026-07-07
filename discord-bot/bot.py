@@ -163,7 +163,7 @@ async def update_label_message(channel_id):
 
 # ===== СЛЭШ-КОМАНДЫ =====
 
-@bot.tree.command(name="список", description="📋 Создать метку с участниками")
+@bot.tree.command(name="список", description="📃 Создать список")
 @app_commands.describe(
     участников="Количество участников для метки (от 1 до 50)",
     минут="Время на сбор реакций в минутах (от 1 до 60)"
