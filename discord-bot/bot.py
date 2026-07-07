@@ -1,6 +1,7 @@
 import subprocess
 import sys
 import os
+import asyncio
 
 # ===== АВТОУСТАНОВКА БИБЛИОТЕК =====
 def install_packages():
@@ -25,7 +26,6 @@ install_packages()
 import discord
 from discord.ext import commands
 from discord import app_commands
-import asyncio
 from datetime import datetime, timedelta
 import pytz
 import random
@@ -59,10 +59,8 @@ async def on_ready():
     logger.info(f'✅ Бот {bot.user} запущен!')
     logger.info(f'📊 Активен на {len(bot.guilds)} серверах')
     
-    # Смена статуса на "Играет в (VZP / CAPT / BIZ)"
     await bot.change_presence(activity=discord.Game(name="VZP / CAPT / BIZ"))
     
-    # Синхронизация слэш-команд
     try:
         synced = await bot.tree.sync()
         logger.info(f"✅ Синхронизировано {len(synced)} слэш-команд")
@@ -73,7 +71,7 @@ async def on_ready():
 
 @bot.event
 async def on_raw_reaction_add(payload):
-    """Отслеживает добавление реакций - ПОКАЗЫВАЕТ ВСЕХ УЧАСТНИКОВ"""
+    """Отслеживает добавление реакций"""
     if payload.user_id == bot.user.id:
         return
     
@@ -113,7 +111,7 @@ async def on_raw_reaction_remove(payload):
     await update_label_message(channel_id)
 
 async def update_label_message(channel_id):
-    """Обновляет сообщение с меткой - ПОКАЗЫВАЕТ ВСЕХ УЧАСТНИКОВ"""
+    """Обновляет сообщение с меткой"""
     if channel_id not in active_labels:
         return
     
@@ -131,20 +129,15 @@ async def update_label_message(channel_id):
     participants = list(label_data['participants'].values())
     target_count = label_data['target_count']
     
-    # ПОКАЗЫВАЕМ ВСЕХ УЧАСТНИКОВ (всех, кто поставил реакцию)
     participant_list = []
     
     if participants:
-        # Показываем ВСЕХ участников, кто поставил реакцию
         for i, user in enumerate(participants, 1):
             participant_list.append(f"{i}. {user.mention}")
         
-        # Если участников больше, чем нужно - показываем всех
         if len(participants) > target_count:
-            # Добавляем предупреждение, но показываем всех
             participant_list.append(f"⚠️ Всего {len(participants)} участников (нужно {target_count})")
     else:
-        # Если нет участников - показываем ожидание
         for i in range(1, target_count + 1):
             participant_list.append(f"{i}. @ожидание")
     
@@ -170,6 +163,81 @@ async def update_label_message(channel_id):
     
     await message.edit(content=None, embed=embed)
 
+async def finish_label(channel_id):
+    """Завершает метку и подводит итоги"""
+    if channel_id not in active_labels:
+        logger.warning(f"⚠️ Метка в канале {channel_id} уже завершена")
+        return
+    
+    label_data = active_labels[channel_id]
+    channel = bot.get_channel(channel_id)
+    
+    if not channel:
+        logger.error(f"❌ Канал {channel_id} не найден!")
+        del active_labels[channel_id]
+        return
+    
+    try:
+        message = await channel.fetch_message(label_data['message_id'])
+    except:
+        logger.error(f"❌ Сообщение метки не найдено в канале {channel_id}")
+        del active_labels[channel_id]
+        return
+    
+    participants = list(label_data['participants'].values())
+    target_count = label_data['target_count']
+    start_time = label_data['start_time'].strftime("%H:%M")
+    
+    if len(participants) > target_count:
+        selected = random.sample(participants, target_count)
+        not_selected = [p for p in participants if p not in selected]
+    else:
+        selected = participants
+        not_selected = []
+    
+    result_lines = [
+        f"🛑 Метка {target_count} x {target_count} // Запрос в {start_time} (МСК)",
+        f"👥 Участники метки ({len(selected)}/{target_count}):"
+    ]
+    
+    for i, user in enumerate(selected, 1):
+        result_lines.append(f"{i}. {user.mention}")
+    
+    if len(selected) < target_count:
+        for i in range(len(selected) + 1, target_count + 1):
+            result_lines.append(f"{i}. @недостает")
+    
+    if not_selected:
+        result_lines.append("----------------")
+        result_lines.append(f"❌ Не вошли ({len(not_selected)} чел.):")
+        for i, user in enumerate(not_selected, 1):
+            result_lines.append(f"{i}. {user.mention}")
+    
+    result_message = "\n".join(result_lines)
+    
+    embed_result = discord.Embed(
+        description=result_message,
+        color=discord.Color.green()
+    )
+    await channel.send(embed=embed_result)
+    
+    del active_labels[channel_id]
+    logger.info(f"✅ Метка в канале {channel_id} завершена")
+
+async def start_timer(channel_id, minutes):
+    """Запускает таймер в фоновом режиме"""
+    logger.info(f"⏰ Запущен таймер для канала {channel_id} на {minutes} минут")
+    
+    # Ждём указанное время
+    await asyncio.sleep(minutes * 60)
+    
+    # Проверяем, существует ли ещё метка
+    if channel_id in active_labels:
+        logger.info(f"⏰ Таймер сработал для канала {channel_id}, завершаем метку")
+        await finish_label(channel_id)
+    else:
+        logger.info(f"⏰ Таймер сработал для канала {channel_id}, но метка уже завершена")
+
 # ===== СЛЭШ-КОМАНДЫ =====
 
 @bot.tree.command(name="список", description="📃 Создать список")
@@ -180,7 +248,6 @@ async def update_label_message(channel_id):
 async def slash_list(interaction: discord.Interaction, участников: int, минут: int):
     """Создаёт метку с участниками"""
     
-    # Проверка каналов
     if ALLOWED_CHANNELS and interaction.channel_id not in ALLOWED_CHANNELS:
         embed = discord.Embed(
             title="❌ Ошибка",
@@ -221,7 +288,6 @@ async def slash_list(interaction: discord.Interaction, участников: int
     now = datetime.now(moscow_tz)
     end_time = now + timedelta(minutes=минут)
     
-    # Начальное сообщение с ожиданием
     participant_list = [f"{i}. @ожидание" for i in range(1, участников + 1)]
     
     embed = discord.Embed(
@@ -238,12 +304,10 @@ async def slash_list(interaction: discord.Interaction, участников: int
     
     embed.set_footer(text=f"⏳ Нажмите ✅ чтобы участвовать! Осталось {минут} мин.")
     
-    # Отправляем сообщение с меткой
     await interaction.response.send_message(embed=embed)
     message = await interaction.original_response()
     await message.add_reaction('✅')
     
-    # Добавляем скрытое упоминание @everyone
     try:
         await interaction.channel.send("||@everyone||")
     except Exception as e:
@@ -259,73 +323,8 @@ async def slash_list(interaction: discord.Interaction, участников: int
     
     logger.info(f"📌 Создана метка в канале {interaction.channel_id}: {участников} участников, {минут} минут")
     
-    await asyncio.sleep(минут * 60)
-    
-    if interaction.channel_id not in active_labels:
-        return
-    
-    await finish_label(interaction.channel_id)
-
-async def finish_label(channel_id):
-    """Завершает метку и подводит итоги"""
-    if channel_id not in active_labels:
-        return
-    
-    label_data = active_labels[channel_id]
-    channel = bot.get_channel(channel_id)
-    
-    if not channel:
-        del active_labels[channel_id]
-        return
-    
-    try:
-        message = await channel.fetch_message(label_data['message_id'])
-    except:
-        del active_labels[channel_id]
-        return
-    
-    participants = list(label_data['participants'].values())
-    target_count = label_data['target_count']
-    start_time = label_data['start_time'].strftime("%H:%M")
-    
-    # Выбираем случайных участников
-    if len(participants) > target_count:
-        selected = random.sample(participants, target_count)
-        not_selected = [p for p in participants if p not in selected]
-    else:
-        selected = participants
-        not_selected = []
-    
-    # Формируем итоговое сообщение в коробочке
-    result_lines = [
-        f"🛑 Метка {target_count} x {target_count} // Запрос в {start_time} (МСК)",
-        f"👥 Участники метки ({len(selected)}/{target_count}):"
-    ]
-    
-    for i, user in enumerate(selected, 1):
-        result_lines.append(f"{i}. {user.mention}")
-    
-    if len(selected) < target_count:
-        for i in range(len(selected) + 1, target_count + 1):
-            result_lines.append(f"{i}. @недостает")
-    
-    if not_selected:
-        result_lines.append("----------------")
-        result_lines.append(f"❌ Не вошли ({len(not_selected)} чел.):")
-        for i, user in enumerate(not_selected, 1):
-            result_lines.append(f"{i}. {user.mention}")
-    
-    result_message = "\n".join(result_lines)
-    
-    # Отправляем итоговое сообщение в коробочке
-    embed_result = discord.Embed(
-        description=result_message,
-        color=discord.Color.green()
-    )
-    await channel.send(embed=embed_result)
-    
-    del active_labels[channel_id]
-    logger.info(f"✅ Метка в канале {channel_id} завершена")
+    # ЗАПУСКАЕМ ТАЙМЕР В ФОНОВОМ РЕЖИМЕ (не блокирует основной поток)
+    asyncio.create_task(start_timer(interaction.channel_id, минут))
 
 @bot.tree.command(name="стоп", description="⏹️ Остановить текущую метку досрочно")
 async def slash_stop(interaction: discord.Interaction):
@@ -378,7 +377,6 @@ async def slash_status(interaction: discord.Interaction):
 async def slash_clear(interaction: discord.Interaction):
     """Очищает все активные метки (только для админов)"""
     
-    # Проверка прав администратора
     if not interaction.user.guild_permissions.administrator:
         embed = discord.Embed(
             title="❌ Ошибка",
