@@ -66,6 +66,8 @@ async def on_ready():
     try:
         synced = await bot.tree.sync()
         logger.info(f"✅ Синхронизировано {len(synced)} слэш-команд")
+        for cmd in synced:
+            logger.info(f"   /{cmd.name} - {cmd.description}")
     except Exception as e:
         logger.error(f"❌ Ошибка синхронизации: {e}")
 
@@ -161,13 +163,13 @@ async def update_label_message(channel_id):
 
 # ===== СЛЭШ-КОМАНДЫ =====
 
-@bot.tree.command(name="список", description="Создать метку с указанным количеством участников и временем сбора")
+@bot.tree.command(name="список", description="📋 Создать метку с участниками")
 @app_commands.describe(
     участников="Количество участников для метки (от 1 до 100)",
     минут="Время на сбор реакций в минутах (от 1 до 60)"
 )
 async def slash_list(interaction: discord.Interaction, участников: int, минут: int):
-    """Слэш-команда для создания метки"""
+    """Создаёт метку с участниками"""
     
     # Проверка каналов
     if ALLOWED_CHANNELS and interaction.channel_id not in ALLOWED_CHANNELS:
@@ -311,28 +313,17 @@ async def finish_label(channel_id):
     del active_labels[channel_id]
     logger.info(f"✅ Метка в канале {channel_id} завершена")
 
-# ===== ОБЫЧНЫЕ КОМАНДЫ (для совместимости) =====
-
-@bot.command(name='список')
-async def old_create_list(ctx, target_count: int, minutes: int):
-    """Старая команда !список (для совместимости)"""
-    embed = discord.Embed(
-        title="ℹ️ Обновление",
-        description="Используйте **/список** для создания метки!",
-        color=discord.Color.blue()
-    )
-    await ctx.send(embed=embed)
-
-@bot.command(name='стоп')
-async def stop_label(ctx):
-    """Принудительно останавливает метку в канале"""
-    if ctx.channel.id not in active_labels:
+@bot.tree.command(name="стоп", description="⏹️ Остановить текущую метку досрочно")
+async def slash_stop(interaction: discord.Interaction):
+    """Останавливает метку досрочно"""
+    
+    if interaction.channel_id not in active_labels:
         embed = discord.Embed(
             title="❌ Ошибка",
             description="В этом канале нет активной метки!",
             color=discord.Color.red()
         )
-        await ctx.send(embed=embed)
+        await interaction.response.send_message(embed=embed, ephemeral=True)
         return
     
     embed = discord.Embed(
@@ -340,22 +331,23 @@ async def stop_label(ctx):
         description="Метка остановлена досрочно!",
         color=discord.Color.orange()
     )
-    await ctx.send(embed=embed)
-    await finish_label(ctx.channel.id)
+    await interaction.response.send_message(embed=embed)
+    await finish_label(interaction.channel_id)
 
-@bot.command(name='статус')
-async def status_label(ctx):
+@bot.tree.command(name="статус", description="📊 Показать статус текущей метки")
+async def slash_status(interaction: discord.Interaction):
     """Показывает статус текущей метки"""
-    if ctx.channel.id not in active_labels:
+    
+    if interaction.channel_id not in active_labels:
         embed = discord.Embed(
             title="❌ Ошибка",
             description="В этом канале нет активной метки!",
             color=discord.Color.red()
         )
-        await ctx.send(embed=embed)
+        await interaction.response.send_message(embed=embed, ephemeral=True)
         return
     
-    label_data = active_labels[ctx.channel.id]
+    label_data = active_labels[interaction.channel_id]
     remaining = label_data['end_time'] - datetime.now(pytz.timezone('Europe/Moscow'))
     minutes = int(remaining.total_seconds() // 60)
     seconds = int(remaining.total_seconds() % 60)
@@ -366,27 +358,37 @@ async def status_label(ctx):
     )
     embed.add_field(name="👥 Участников", value=f"{len(label_data['participants'])}/{label_data['target_count']}", inline=True)
     embed.add_field(name="⏳ Осталось времени", value=f"{minutes} мин {seconds} сек", inline=True)
-    await ctx.send(embed=embed)
+    await interaction.response.send_message(embed=embed)
 
-@bot.command(name='очистить')
-@commands.has_permissions(administrator=True)
-async def clear_labels(ctx):
+@bot.tree.command(name="очистить", description="🧹 Очистить все активные метки (только для админов)")
+async def slash_clear(interaction: discord.Interaction):
     """Очищает все активные метки (только для админов)"""
-    if ctx.channel.id in active_labels:
-        del active_labels[ctx.channel.id]
+    
+    # Проверка прав администратора
+    if not interaction.user.guild_permissions.administrator:
+        embed = discord.Embed(
+            title="❌ Ошибка",
+            description="У вас нет прав администратора для этой команды!",
+            color=discord.Color.red()
+        )
+        await interaction.response.send_message(embed=embed, ephemeral=True)
+        return
+    
+    if interaction.channel_id in active_labels:
+        del active_labels[interaction.channel_id]
         embed = discord.Embed(
             title="✅ Очищено",
             description="Все метки в этом канале очищены!",
             color=discord.Color.green()
         )
-        await ctx.send(embed=embed)
+        await interaction.response.send_message(embed=embed)
     else:
         embed = discord.Embed(
             title="❌ Ошибка",
             description="В этом канале нет активных меток.",
             color=discord.Color.red()
         )
-        await ctx.send(embed=embed)
+        await interaction.response.send_message(embed=embed, ephemeral=True)
 
 # Запуск бота
 if __name__ == "__main__":
