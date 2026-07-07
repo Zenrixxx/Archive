@@ -142,8 +142,8 @@ async def update_label_message(channel_id):
     end_time = label_data['end_time'].strftime("%H:%M")
     
     embed = discord.Embed(
-        title=f"🏷️ Метка {target_count} x {target_count}",
-        description=f"⏰ Итоги в {end_time} (МСК)",
+        title=f"🛑 Метка {target_count} x {target_count}",
+        description=f"⏳ Итоги в {end_time} (МСК)",
         color=discord.Color.blue()
     )
     
@@ -284,7 +284,7 @@ async def finish_label(channel_id):
     
     # Формируем итоговое сообщение в коробочке
     result_lines = [
-        f"🏷️ Метка {target_count} x {target_count} // Запрос в {start_time} (МСК)",
+        f"🛑 Метка {target_count} x {target_count} // Запрос в {start_time} (МСК)",
         "👥 Участники метки:"
     ]
     
