@@ -360,7 +360,7 @@ async def slash_status(interaction: discord.Interaction):
     embed.add_field(name="⏳ Осталось времени", value=f"{minutes} мин {seconds} сек", inline=True)
     await interaction.response.send_message(embed=embed)
 
-@bot.tree.command(name="очистить", description="🧹 Очистить все активные метки (только для админов)")
+@bot.tree.command(name="очистить", description="🧹 Очистить все активные метки")
 async def slash_clear(interaction: discord.Interaction):
     """Очищает все активные метки (только для админов)"""
     
