@@ -165,7 +165,7 @@ async def update_label_message(channel_id):
 
 @bot.tree.command(name="список", description="📋 Создать метку с участниками")
 @app_commands.describe(
-    участников="Количество участников для метки (от 1 до 100)",
+    участников="Количество участников для метки (от 1 до 50)",
     минут="Время на сбор реакций в минутах (от 1 до 60)"
 )
 async def slash_list(interaction: discord.Interaction, участников: int, минут: int):
@@ -181,10 +181,10 @@ async def slash_list(interaction: discord.Interaction, участников: int
         await interaction.response.send_message(embed=embed, ephemeral=True)
         return
     
-    if участников < 1 or участников > 100:
+    if участников < 1 or участников > 50:
         embed = discord.Embed(
             title="❌ Ошибка",
-            description="Количество участников должно быть от 1 до 100!",
+            description="Количество участников должно быть от 1 до 50!",
             color=discord.Color.red()
         )
         await interaction.response.send_message(embed=embed, ephemeral=True)
