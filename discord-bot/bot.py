@@ -188,6 +188,7 @@ async def finish_label(channel_id):
     target_count = label_data['target_count']
     start_time = label_data['start_time'].strftime("%H:%M")
     
+    # Выбираем случайных участников
     if len(participants) > target_count:
         selected = random.sample(participants, target_count)
         not_selected = [p for p in participants if p not in selected]
@@ -195,6 +196,7 @@ async def finish_label(channel_id):
         selected = participants
         not_selected = []
     
+    # ===== 1. ОТПРАВЛЯЕМ ИТОГОВЫЙ СПИСОК В КОРОБОЧКЕ =====
     result_lines = [
         f"🛑 Метка {target_count} x {target_count} // Запрос в {start_time} (МСК)",
         f"👥 Участники метки ({len(selected)}/{target_count}):"
@@ -220,6 +222,14 @@ async def finish_label(channel_id):
         color=discord.Color.green()
     )
     await channel.send(embed=embed_result)
+    
+    # ===== 2. ОТПРАВЛЯЕМ ТЕГИ УЧАСТНИКОВ ОТДЕЛЬНЫМ СООБЩЕНИЕМ (БЕЗ КОРОБКИ) =====
+    if selected:
+        # Формируем список тегов через пробел
+        mentions = " ".join([user.mention for user in selected])
+        await channel.send(f"🎯 **Участники метки:** {mentions}")
+    else:
+        await channel.send("❌ **Никто не поставил реакцию**")
     
     del active_labels[channel_id]
     logger.info(f"✅ Метка в канале {channel_id} завершена")
