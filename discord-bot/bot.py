@@ -22,9 +22,9 @@ def install_packages():
 install_packages()
 # ====================================
 
-# Теперь импортируем библиотеки
 import discord
 from discord.ext import commands
+from discord import app_commands
 import asyncio
 from datetime import datetime, timedelta
 import pytz
@@ -58,7 +58,16 @@ active_labels = {}
 async def on_ready():
     logger.info(f'✅ Бот {bot.user} запущен!')
     logger.info(f'📊 Активен на {len(bot.guilds)} серверах')
-    await bot.change_presence(activity=discord.Game(name="!список"))
+    
+    # Смена статуса на "Играет в (VZP / CAPT / BIZ)"
+    await bot.change_presence(activity=discord.Game(name="VZP / CAPT / BIZ"))
+    
+    # Синхронизация слэш-команд
+    try:
+        synced = await bot.tree.sync()
+        logger.info(f"✅ Синхронизировано {len(synced)} слэш-команд")
+    except Exception as e:
+        logger.error(f"❌ Ошибка синхронизации: {e}")
 
 @bot.event
 async def on_raw_reaction_add(payload):
@@ -150,65 +159,96 @@ async def update_label_message(channel_id):
     
     await message.edit(content=None, embed=embed)
 
-@bot.command(name='список')
-async def create_list(ctx, target_count: int, minutes: int):
-    """Создает метку с указанным количеством участников и временем сбора"""
+# ===== СЛЭШ-КОМАНДЫ =====
+
+@bot.tree.command(name="список", description="Создать метку с указанным количеством участников и временем сбора")
+@app_commands.describe(
+    участников="Количество участников для метки (от 1 до 100)",
+    минут="Время на сбор реакций в минутах (от 1 до 60)"
+)
+async def slash_list(interaction: discord.Interaction, участников: int, минут: int):
+    """Слэш-команда для создания метки"""
     
     # Проверка каналов
-    if ALLOWED_CHANNELS and ctx.channel.id not in ALLOWED_CHANNELS:
-        await ctx.send("❌ Эта команда доступна только в определенных каналах!")
+    if ALLOWED_CHANNELS and interaction.channel_id not in ALLOWED_CHANNELS:
+        embed = discord.Embed(
+            title="❌ Ошибка",
+            description="Эта команда доступна только в определенных каналах!",
+            color=discord.Color.red()
+        )
+        await interaction.response.send_message(embed=embed, ephemeral=True)
         return
     
-    if target_count < 1 or target_count > 100:
-        await ctx.send("❌ Количество участников должно быть от 1 до 100!")
+    if участников < 1 or участников > 100:
+        embed = discord.Embed(
+            title="❌ Ошибка",
+            description="Количество участников должно быть от 1 до 100!",
+            color=discord.Color.red()
+        )
+        await interaction.response.send_message(embed=embed, ephemeral=True)
         return
     
-    if minutes < 1 or minutes > 60:
-        await ctx.send("❌ Время должно быть от 1 до 60 минут!")
+    if минут < 1 or минут > 60:
+        embed = discord.Embed(
+            title="❌ Ошибка",
+            description="Время должно быть от 1 до 60 минут!",
+            color=discord.Color.red()
+        )
+        await interaction.response.send_message(embed=embed, ephemeral=True)
         return
     
-    if ctx.channel.id in active_labels:
-        await ctx.send("❌ В этом канале уже есть активная метка! Дождитесь завершения.")
+    if interaction.channel_id in active_labels:
+        embed = discord.Embed(
+            title="❌ Ошибка",
+            description="В этом канале уже есть активная метка! Дождитесь завершения.",
+            color=discord.Color.red()
+        )
+        await interaction.response.send_message(embed=embed, ephemeral=True)
         return
     
     moscow_tz = pytz.timezone('Europe/Moscow')
     now = datetime.now(moscow_tz)
-    end_time = now + timedelta(minutes=minutes)
+    end_time = now + timedelta(minutes=минут)
     
     embed = discord.Embed(
-        title=f"🏷️ Метка {target_count} x {target_count}",
+        title=f"🏷️ Метка {участников} x {участников}",
         description=f"⏰ Итоги в {end_time.strftime('%H:%M')} (МСК)",
         color=discord.Color.blue()
     )
     
-    participant_list = [f"{i}. @ожидание" for i in range(1, target_count + 1)]
+    participant_list = [f"{i}. @ожидание" for i in range(1, участников + 1)]
     embed.add_field(
         name="👥 Поставили реакции:",
         value="\n".join(participant_list),
         inline=False
     )
     
-    embed.set_footer(text=f"⏳ Нажмите ✅ чтобы участвовать! Осталось {minutes} мин.")
+    embed.set_footer(text=f"⏳ Нажмите ✅ чтобы участвовать! Осталось {минут} мин.")
     
-    message = await ctx.send(embed=embed)
+    # Отправляем сообщение с меткой
+    await interaction.response.send_message(embed=embed)
+    message = await interaction.original_response()
     await message.add_reaction('✅')
     
-    active_labels[ctx.channel.id] = {
+    # Добавляем скрытое упоминание @everyone
+    await interaction.channel.send(f"||@everyone||", delete_after=0.1)
+    
+    active_labels[interaction.channel_id] = {
         'message_id': message.id,
-        'target_count': target_count,
+        'target_count': участников,
         'end_time': end_time,
         'participants': {},
         'start_time': now
     }
     
-    logger.info(f"📌 Создана метка в канале {ctx.channel.id}: {target_count} участников, {minutes} минут")
+    logger.info(f"📌 Создана метка в канале {interaction.channel_id}: {участников} участников, {минут} минут")
     
-    await asyncio.sleep(minutes * 60)
+    await asyncio.sleep(минут * 60)
     
-    if ctx.channel.id not in active_labels:
+    if interaction.channel_id not in active_labels:
         return
     
-    await finish_label(ctx.channel.id)
+    await finish_label(interaction.channel_id)
 
 async def finish_label(channel_id):
     """Завершает метку и подводит итоги"""
@@ -240,6 +280,7 @@ async def finish_label(channel_id):
         selected = participants
         not_selected = []
     
+    # Формируем итоговое сообщение в коробочке
     result_lines = [
         f"🏷️ Метка {target_count} x {target_count} // Запрос в {start_time} (МСК)",
         "👥 Участники метки:"
@@ -260,26 +301,58 @@ async def finish_label(channel_id):
     
     result_message = "\n".join(result_lines)
     
-    await channel.send(result_message)
+    # Отправляем итоговое сообщение в коробочке
+    embed_result = discord.Embed(
+        description=result_message,
+        color=discord.Color.green()
+    )
+    await channel.send(embed=embed_result)
     
     del active_labels[channel_id]
     logger.info(f"✅ Метка в канале {channel_id} завершена")
+
+# ===== ОБЫЧНЫЕ КОМАНДЫ (для совместимости) =====
+
+@bot.command(name='список')
+async def old_create_list(ctx, target_count: int, minutes: int):
+    """Старая команда !список (для совместимости)"""
+    embed = discord.Embed(
+        title="ℹ️ Обновление",
+        description="Используйте **/список** для создания метки!",
+        color=discord.Color.blue()
+    )
+    await ctx.send(embed=embed)
 
 @bot.command(name='стоп')
 async def stop_label(ctx):
     """Принудительно останавливает метку в канале"""
     if ctx.channel.id not in active_labels:
-        await ctx.send("❌ В этом канале нет активной метки!")
+        embed = discord.Embed(
+            title="❌ Ошибка",
+            description="В этом канале нет активной метки!",
+            color=discord.Color.red()
+        )
+        await ctx.send(embed=embed)
         return
     
-    await ctx.send("⏹️ Метка остановлена досрочно!")
+    embed = discord.Embed(
+        title="⏹️ Остановка",
+        description="Метка остановлена досрочно!",
+        color=discord.Color.orange()
+    )
+    await ctx.send(embed=embed)
     await finish_label(ctx.channel.id)
 
 @bot.command(name='статус')
 async def status_label(ctx):
     """Показывает статус текущей метки"""
     if ctx.channel.id not in active_labels:
-        await ctx.send("❌ В этом канале нет активной метки!")
+        embed = discord.Embed(
+            title="❌ Ошибка",
+            description="В этом канале нет активной метки!",
+            color=discord.Color.red()
+        )
+        await ctx.send(embed=embed)
         return
     
     label_data = active_labels[ctx.channel.id]
@@ -287,11 +360,13 @@ async def status_label(ctx):
     minutes = int(remaining.total_seconds() // 60)
     seconds = int(remaining.total_seconds() % 60)
     
-    await ctx.send(
-        f"📊 **Статус метки:**\n"
-        f"👥 Участников: {len(label_data['participants'])}/{label_data['target_count']}\n"
-        f"⏳ Осталось времени: {minutes} мин {seconds} сек"
+    embed = discord.Embed(
+        title="📊 Статус метки",
+        color=discord.Color.blue()
     )
+    embed.add_field(name="👥 Участников", value=f"{len(label_data['participants'])}/{label_data['target_count']}", inline=True)
+    embed.add_field(name="⏳ Осталось времени", value=f"{minutes} мин {seconds} сек", inline=True)
+    await ctx.send(embed=embed)
 
 @bot.command(name='очистить')
 @commands.has_permissions(administrator=True)
@@ -299,9 +374,19 @@ async def clear_labels(ctx):
     """Очищает все активные метки (только для админов)"""
     if ctx.channel.id in active_labels:
         del active_labels[ctx.channel.id]
-        await ctx.send("✅ Все метки в этом канале очищены!")
+        embed = discord.Embed(
+            title="✅ Очищено",
+            description="Все метки в этом канале очищены!",
+            color=discord.Color.green()
+        )
+        await ctx.send(embed=embed)
     else:
-        await ctx.send("❌ В этом канале нет активных меток.")
+        embed = discord.Embed(
+            title="❌ Ошибка",
+            description="В этом канале нет активных меток.",
+            color=discord.Color.red()
+        )
+        await ctx.send(embed=embed)
 
 # Запуск бота
 if __name__ == "__main__":
