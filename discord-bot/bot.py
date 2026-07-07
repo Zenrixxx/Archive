@@ -139,7 +139,7 @@ async def update_label_message(channel_id):
             participant_list.append(f"⚠️ Всего {len(participants)} участников (нужно {target_count})")
     else:
         for i in range(1, target_count + 1):
-            participant_list.append(f"{i}. @ожидание")
+            participant_list.append(f"{i}. @nobody")
     
     end_time = label_data['end_time'].strftime("%H:%M")
     
@@ -288,7 +288,7 @@ async def slash_list(interaction: discord.Interaction, участников: int
     now = datetime.now(moscow_tz)
     end_time = now + timedelta(minutes=минут)
     
-    participant_list = [f"{i}. @ожидание" for i in range(1, участников + 1)]
+    participant_list = [f"{i}. @nobody" for i in range(1, участников + 1)]
     
     embed = discord.Embed(
         title=f"🛑 Метка {участников} x {участников}",
